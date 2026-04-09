@@ -6,6 +6,10 @@
   "backstage": {
     "role": "frontend"
   },
+  "proxy": {
+    "/api": "http://localhost:7007",
+    "/oauth2": "http://localhost:7007"
+  },
   "scripts": {
     "start": "backstage-cli package start",
     "build": "backstage-cli package build",

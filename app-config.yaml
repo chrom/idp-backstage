@@ -21,7 +21,10 @@ backend:
   # auth:
   #   keys:
   #     - secret: ${BACKEND_SECRET}
-  baseUrl: http://localhost:7007
+  # Same host/port as app.baseUrl so the browser treats API calls as same-origin; the dev server
+  # proxies /api to the process listening on `listen.port`. Otherwise guest/session cookies are
+  # not sent to :7007 and catalog requests return 401 ("Could not fetch catalog entities").
+  baseUrl: http://localhost:3000
   listen:
     port: 7007
     # Uncomment the following host directive to bind to specific interfaces
@@ -31,22 +34,30 @@ backend:
     # Content-Security-Policy directives follow the Helmet format: https://helmetjs.github.io/#reference
     # Default Helmet Content-Security-Policy values can be removed by setting the key to false
   cors:
-    origin: http://localhost:3000
+    # Include every dev UI origin you use (port must match the browser URL or CORS blocks API calls → 401).
+    origin:
+      - http://localhost:3000
+      - http://localhost:3007
+      - http://127.0.0.1:3000
+      - http://127.0.0.1:3007
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
     credentials: true
-  # This is for local development only, it is not recommended to use this in production
+  # PostgreSQL: run `docker compose up -d postgres` from the idp-backstage root and copy `.env` from `.env.example`.
   # The production database configuration is stored in app-config.production.yaml
   database:
-    client: better-sqlite3
-    connection: ':memory:'
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
 
 integrations:
   github:
     - host: github.com
-      # This is a Personal Access Token or PAT from GitHub. You can find out how to generate this token, and more information
-      # about setting up the GitHub integration here: https://backstage.io/docs/integrations/github/locations#configuration
-      token: ${GITHUB_TOKEN}
+      # Optional for PoC; software-catalog with file: does not need a token. For GitHub imports set GITHUB_TOKEN in .env
+      token: ${GITHUB_TOKEN:-}
     ### Example for how to add your GitHub Enterprise instance using the API:
     # - host: ghe.example.net
     #   apiBaseUrl: https://ghe.example.net/api/v3
@@ -67,7 +78,9 @@ proxy:
 techdocs:
   builder: 'local' # Alternatives - 'external'
   generator:
-    runIn: 'docker' # Alternatives - 'local'
+    # 'docker' requires /var/run/docker.sock inside the Backstage container (not present by default).
+    # The backend image installs mkdocs-techdocs-plugin; use 'docker' only if you mount the host socket.
+    runIn: 'local'
   publisher:
     type: 'local' # Alternatives - 'googleGcs' or 'awsS3'. Read documentation for using alternatives.
 
@@ -85,7 +98,8 @@ catalog:
     entityFilename: catalog-info.yaml
     pullRequestBranchName: backstage-integration
   rules:
-    - allow: [Component, System, API, Resource, Location]
+    # Include Group/User so the Quarkus gold template (Group + Component) is accepted
+    - allow: [Component, System, API, Resource, Location, Group, User, Template, Domain]
   locations:
     # Local example data, file locations are relative to the backend process, typically `packages/backend`
     - type: file
@@ -102,6 +116,10 @@ catalog:
       target: ../../examples/org.yaml
       rules:
         - allow: [User, Group]
+
+    # Quarkus gold template (change the path or use a Docker volume mount)
+    - type: file
+      target: ${CATALOG_TEMPLATE_PATH}/catalog-info.yaml
 
     ## Uncomment these lines to add more example data
     # - type: url

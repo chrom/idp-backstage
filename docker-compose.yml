@@ -1,0 +1,47 @@
+# PostgreSQL for Backstage + optional full stack (after yarn build:backend on the host).
+# Ports: 5433 → Postgres (avoid clash with local 5432), 7007 → Backstage in Docker.
+name: idp-backstage
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: idp-backstage-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-backstage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backstage}
+      POSTGRES_DB: ${POSTGRES_DB:-backstage}
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5433}:5432"
+    volumes:
+      - backstage_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-backstage} -d ${POSTGRES_DB:-backstage}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Docker COPY needs packages/backend/dist/skeleton.tar.gz + bundle.tar.gz (not plain tsc output).
+  # From repo root: `make build-backstage-bundle` or: cd backstage && corepack yarn install && yarn tsc && yarn build:backend
+  backstage:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    container_name: idp-backstage-app
+    ports:
+      - "7007:7007"
+    environment:
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-backstage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backstage}
+      APP_ENV: production
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    volumes:
+      - ${GOLD_TEMPLATE_HOST_PATH:-/home/ratio/projects/java/test_q/quarkus-ms-gold-template}:/opt/gold-template:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  backstage_pg_data:
